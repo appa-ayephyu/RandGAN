@@ -136,7 +136,7 @@ def train():
     y_fake = torch.LongTensor(opt.batch_size).cuda()
     np_y = np.arange(10)
     np_y = np.repeat(np_y, 8)
-    fixed_y_fake = Variable(torch.from_numpy(np_y).cuda())
+    fixed_y_fake = Variable(torch.from_numpy(np_y).type(torch.LongTensor).cuda())
     # fixed label
     zeros = Variable(torch.FloatTensor(opt.batch_size).fill_(0).cuda())
     ones = Variable(torch.FloatTensor(opt.batch_size).fill_(1).cuda())
@@ -166,8 +166,10 @@ def train():
             # feed real data
             x_real, y_real = x_real.cuda(), y_real.cuda()
             v_x_real, v_y_real = Variable(x_real), Variable(y_real)
-            # find adversarial example
-            ones.data.resize_(y_real.size())
+            # find adversarial example, this is changed for error
+            # ones.data.resize_(y_real.size())
+            with torch.no_grad():
+                ones.resize_(y_real.size())
             v_x_real_adv = attack_Linf_PGD(v_x_real, ones, v_y_real, dis, Ld, opt.adv_steps, opt.epsilon)
             d_real_bin, d_real_multi = dis(v_x_real_adv)
             # accuracy for real images
