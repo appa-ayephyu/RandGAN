@@ -156,7 +156,9 @@ def train():
                 v_x_fake = gen(vz, y=v_y_fake)
                 v_x_fake_adv = v_x_fake
                 d_fake_bin, d_fake_multi = dis(v_x_fake_adv)
-                ones.data.resize_as_(d_fake_bin.data)
+                # ones.data.resize_as_(d_fake_bin.data) changed this for error
+                with torch.no_grad():
+                    ones.resize_as_(d_fake_bin.data)
                 loss_g = Lg(d_fake_bin, ones, d_fake_multi, v_y_fake, lam=0.5)
                 loss_g.backward()
                 opt_g.step()
