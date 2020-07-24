@@ -1,0 +1,20 @@
+From Haoyang
+
+The pytorch code is in 'main_model_pytorch' and can be run directly
+
+Data and weights are not uploaded due to the large file size.
+
+Before running the code, please do the following:
+
+1. go to Experiment1 (the folder from the author), go to Merge_Lenet,
+go to Calibration_stage, copy 'data' and 'PQ_weight', paste these
+2 files to folder 'Calibration_stage' which I uploaded.
+
+2. go to Experiment1 (the folder from the author), go to Merge_Lenet,
+go to KMeans_stage, copy fashion_weight.npy and Sound20_weight.npy,
+paste these 2 files to 'KMeans_stage' which I uploaded.
+
+3. go to config.py, change weight_dir and max_iter    
+
+Please let me know if you still have issue running the code after
+completing the 3 steps above.

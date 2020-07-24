@@ -1,0 +1,95 @@
+weight.(1,32,8).(64,128,64).False.False
+
+-----------------------Codebooks--------------------------------
+
+Ex1_shared_codebook.1: Codewords(cluster center) of conv layer 1
+1 segment
+codeword per segment: 64
+codeword: array shape -> (1,)
+codebook1.shape: 1,64,1
+
+Ex1_shared_codebook.2: Codewords(cluster center) of conv layer 2
+1 segment
+codeword per segment: 128
+codeword: array shape -> (32,)
+codebook1.shape: 1,128,32
+
+Ex1_shared_codebook.3: Codewords(cluster center) of fc layer 1
+512 segment
+codeword per segment: 64
+codeword: array shape -> (8,)
+codebook1.shape: 512,64,8
+
+------------------------Extra------------------------------------
+
+mean_adjust: append 1 per conv/fc layer
+[1,1,1] type = array
+
+
+
+weight.(1,32,8).(64,128,64).False.False
+
+------------------------labels (which cluster center) ------------
+
+Ex1_M1_index.1: The label(which cluster center) that each 1*1*r kernel vector belongs to in conv layer 1 of model 1
+1 segment
+number of labels per segment: 800 (orignal kernel width * height * number of chanel out)
+label: {0:63}
+Ex1_M1_index.shape: 1,800
+
+Ex1_M1_index.2: The label(which cluster center) that each 1*1*r kernel vector belongs to in conv layer 2 of model 1
+1 segment
+number of labels per segment: 1600 (orignal kernel width * height * number of chanel out)
+label: {0:127}
+Ex1_M1_index.shape: 1,1600
+
+Ex1_M1_index.3: The label(which cluster center) that each 1*1*r kernel vector belongs to in fc layer 1 of model 1
+512 segment
+number of labels per segment: 1024 (number of output neuron)
+label: {0:63}
+Ex1_M1_index.shape: 512,1024
+
+Since hyperparameter of model 1 and 2 are the same, the above structure applies for model 2:
+Ex1_M1_index.1 = Ex1_M2_index.1
+Ex1_M1_index.2 = Ex1_M2_index.2
+Ex1_M1_index.3 = Ex1_M2_index.3
+
+
+
+weight.(1,32,8).(64,128,64).False.False
+
+
+-------------------------orders (a list of continuous indexes starting from 0 and end with the number of input chanel (d) - 1 ) ---------
+
+Ex1_M1_order.1: conv1 of model1
+*** Ex1_M1_order.shape: 1, (note: the first dimension is a list of 1 continuous indexes begining from 0)
+
+Ex1_M1_order.2: conv2 of model1
+*** Ex1_M1_order.shape: 32, (note: the first dimension is a list of 31 continuous indexes begining from 0)
+
+Ex1_M1_order.3: fc1 of model1
+*** Ex1_M1_order.shape: 4096, (note: the first dimension is a list of 4096 continuous indexes begining from 0)
+
+
+unclear...
+
+-------------------------orders (the location (range of indexes) of every 1*1*r vector in the layer in the depth direction only)---------
+
+Ex1_M1_order.1: conv1 of model1
+1 segment
+number of locations(range of indexes) in depth 1 (1 is the chanel input): 1/1 (d/r) = 1
+locations: {[0]}
+*** Ex1_M1_order.shape: 1, (note: the first dimension is a list of 1 continuous indexes begining from 0)
+
+Ex1_M1_order.2: conv2 of model1
+1 segment
+number of locations(range of indexes) in depth 32 (32 is the chanel input): 32/32 (d/r)= 1
+locations: {[0,1,2,...,31]}
+*** Ex1_M1_order.shape: 32, (note: the first dimension is a list of 31 continuous indexes begining from 0)
+
+Ex1_M1_order.3: fc1 of model1
+512 segments
+for each segment:
+	number of locations(range of indexes) in depth 32 (32 is the chanel input): 32/32 (d/r)= 1
+	locations: {[ segment number * r: (segment number+1) * r ]} #assuming first segment is segment 0
+*** Ex1_M1_order.shape: 4096, (note: the first dimension is a list of 4096 continuous indexes begining from 0)
