@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from .resblocks import Block
 
 class ResNetGenerator(nn.Module):
+    #using same generator as before
     def __init__(self, ch=64, dim_z=128, bottom_width=4, activation=F.relu, \
             n_classes=0, distribution="normal"):
         super(ResNetGenerator, self).__init__()

@@ -7,6 +7,7 @@ from .linf_sgd import Linf_SGD
 
 # performs Linf-constraint PGD attack w/o noise
 # @epsilon: radius of Linf-norm ball
+# called from train, oracles
 def attack_Linf_PGD(input_v, ones, label_v, dis, Ld, steps, epsilon):
     dis.eval()
     adverse_v = input_v.data.clone()

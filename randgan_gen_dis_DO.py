@@ -1,14 +1,3 @@
-"""
-@Project description
-The main objective is to apply the double oracle method into GAN
-Basically, we focus on computing the mixed Nash equilibrium of GAN
-Compared with the previous pure Nash equilibrium, mixed Nash equilibrium always exists
-With the randomization of mixed strategy, GAN may have a better ability against exploitation
-
-@Author Xinrun Wang
-@Date 10 Dec 2019
-"""
-
 import argparse
 import os
 
