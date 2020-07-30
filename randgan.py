@@ -12,8 +12,8 @@ from torchvision.utils import save_image
 from torch.utils.data import DataLoader
 from miscs.pgd import attack_Linf_PGD, attack_FGSM
 from miscs.loss import *
-from operator import add, neg
 from torch.distributions import Categorical
+from double_oracle.utils import prune_the_support_set, termination_checking, meta_solver
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='resnet_32')
@@ -123,6 +123,7 @@ def make_dataset():
         raise ValueError(f"Unknown dataset: {opt.dataset}")
     return loader
 
+
 def train(gen, dis):
     global train_loader
     # buffer:
@@ -213,6 +214,25 @@ def train(gen, dis):
         if (epoch + 1) % 50 == 0:
             opt.lr /= 2
             opt_g, opt_d = make_optimizer(gen), make_optimizer(dis)
+
+
+def aug_payoff_method2(gen, dis):
+    global train_loader
+    sum_loss = 0
+    num_case = 0
+    for count, (x_real, y_real) in enumerate(train_loader):
+        # gaussian noise
+        z = torch.FloatTensor(opt.batch_size, opt.nz).cuda()
+        fixed_z = Variable(torch.FloatTensor(8 * 10, opt.nz).normal_(0, 1).cuda())
+        # random label
+        y_fake = torch.LongTensor(opt.batch_size).cuda()
+        np_y = np.arange(10)
+        np_y = np.repeat(np_y, 8)
+        fixed_y_fake = Variable(torch.from_numpy(np_y).type(torch.LongTensor).cuda())
+        # fixed label
+        zeros = Variable(torch.FloatTensor(opt.batch_size).fill_(0).cuda())
+        ones = Variable(torch.FloatTensor(opt.batch_size).fill_(1).cuda())
+
 
 
 def aug_payoff(gen, dis):
@@ -430,93 +450,6 @@ def discriminator_classifier_oracle(dis, epoche):
         meta_matrix = np.column_stack((meta_matrix, aug_col))
 
 
-def NE_solver(payoff_matrix, iterations=100):
-    'Return the oddments (mixed strategy ratios) for a given payoff matrix'
-    transpose = list(zip(*payoff_matrix))
-    numrows = len(payoff_matrix)
-    numcols = len(transpose)
-    row_cum_payoff = [0] * numrows
-    col_cum_payoff = [0] * numcols
-    colpos = list(range(numcols))
-    rowpos = list(map(neg, range(numrows)))
-    colcnt = [0] * numcols
-    rowcnt = [0] * numrows
-    active = 0
-    for i in range(iterations):
-        rowcnt[active] += 1
-        col_cum_payoff = list(map(add, payoff_matrix[active], col_cum_payoff))
-        active = min(list(zip(col_cum_payoff, colpos)))[1]
-        colcnt[active] += 1
-        row_cum_payoff = list(map(add, transpose[active], row_cum_payoff))
-        active = -max(list(zip(row_cum_payoff, rowpos)))[1]
-    value_of_game = (max(row_cum_payoff) + min(col_cum_payoff)) / 2.0 / iterations
-    return rowcnt, colcnt, value_of_game
-
-
-def meta_solver(meta_matrix):
-    global generator_list, discriminator_list
-    rowcnt, colcnt, value_of_game = NE_solver(meta_matrix)
-    local_generator_meta_strategy = np.array([i / 100 for i in rowcnt], dtype=float)
-    local_discriminator_meta_strategy = np.array([c / 100 for c in colcnt], dtype=float)
-    return local_generator_meta_strategy, local_discriminator_meta_strategy
-
-
-def termination_checking(meta_matrix):
-    global generator_meta_strategy, discriminator_meta_strategy
-    (row, col) = meta_matrix.shape
-
-    # I added this since there is no generator_distribution or discriminator distribution here yet
-    if generator_meta_strategy.size == 0 or discriminator_meta_strategy.size == 0:
-        num_support = len(generator_list)
-        generator_meta_strategy = np.random.rand(num_support, 1)
-        generator_distribution = generator_meta_strategy / sum(generator_meta_strategy)
-        discriminator_meta_strategy = np.random.rand(num_support, 1)
-        discriminator_meta_strategy = discriminator_meta_strategy / sum(discriminator_meta_strategy)
-
-    current_utility = 0
-    for r in range(row - 1):
-        for c in range(col - 1):
-            current_utility = \
-                current_utility + generator_meta_strategy[r] * discriminator_meta_strategy[c] * meta_matrix[r][c]
-    row_increment = 0
-    for c in range(col):
-        row_increment = row_increment + discriminator_meta_strategy[c] * meta_matrix[-1][c]
-    col_increment = 0
-    for r in range(row):
-        col_increment = col_increment + generator_meta_strategy[r] * meta_matrix[r][-1]
-    row_increment = -row_increment - (-current_utility)
-    col_increment = col_increment - current_utility
-    if -1 * row_increment < 0 and col_increment < 0:
-        return True
-
-
-def prune_the_support_set():
-    global generator_list, discriminator_list, generator_meta_strategy, discriminator_meta_strategy, meta_matrix
-    min_gen = min(generator_meta_strategy)
-    min_dis = min(discriminator_meta_strategy)
-    g_index = []
-    d_index = []
-    for i in range(len(generator_meta_strategy)):
-        if generator_meta_strategy[i] == min_gen:
-            g_index.append(i)
-            if os.path.exists(generator_list[i]):
-                os.remove(generator_list[i])
-
-    for i in range(len(discriminator_meta_strategy)):
-        if discriminator_meta_strategy[i] == min_dis:
-            d_index.append(i)
-            if os.path.exists(discriminator_list[i]):
-                os.remove(discriminator_list[i])
-    g_index = tuple(g_index)
-    d_index = tuple(d_index)
-    discriminator_list = np.delete(discriminator_list, d_index, 0)
-    generator_list = np.delete(generator_list, g_index, 0)
-    generator_meta_strategy = np.delete(generator_meta_strategy, g_index, 0)
-    discriminator_meta_strategy = np.delete(discriminator_meta_strategy, d_index, 0)
-    meta_matrix = np.delete(meta_matrix, g_index, 0)
-    meta_matrix = np.delete(meta_matrix, d_index, 1)
-
-
 generator_list = []
 discriminator_list = []
 generator_meta_strategy = []
@@ -542,10 +475,10 @@ if __name__ == "__main__":
     for epochs in range(70):
         generator_oracle(gen, epochs)
         discriminator_classifier_oracle(dis, epochs)
-        generator_meta_strategy, discriminator_meta_strategy = meta_solver(meta_matrix)
-        if termination_checking(meta_matrix):
+        generator_meta_strategy, discriminator_meta_strategy = meta_solver(generator_list, discriminator_list, meta_matrix)
+        if termination_checking(generator_list, discriminator_list, generator_meta_strategy, discriminator_meta_strategy, meta_matrix):
             break
         if len(generator_list) > 5:
-            prune_the_support_set()
+            generator_list, discriminator_list, generator_meta_strategy, discriminator_meta_strategy, meta_matrix = prune_the_support_set(generator_list, discriminator_list, generator_meta_strategy, discriminator_meta_strategy, meta_matrix)
 
 
