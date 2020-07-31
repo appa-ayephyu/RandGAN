@@ -75,6 +75,9 @@ def load_models():
 def get_loss():
     return loss_nll, loss_nll
 
+def get_bin_loss():
+    return loss_bin
+
 def make_optimizer(model, beta1=0, beta2=0.9):
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(beta1, beta2))
     return optimizer
@@ -216,26 +219,7 @@ def train(gen, dis):
             opt_g, opt_d = make_optimizer(gen), make_optimizer(dis)
 
 
-def aug_payoff_method2(gen, dis):
-    global train_loader
-    sum_loss = 0
-    num_case = 0
-    for count, (x_real, y_real) in enumerate(train_loader):
-        # gaussian noise
-        z = torch.FloatTensor(opt.batch_size, opt.nz).cuda()
-        fixed_z = Variable(torch.FloatTensor(8 * 10, opt.nz).normal_(0, 1).cuda())
-        # random label
-        y_fake = torch.LongTensor(opt.batch_size).cuda()
-        np_y = np.arange(10)
-        np_y = np.repeat(np_y, 8)
-        fixed_y_fake = Variable(torch.from_numpy(np_y).type(torch.LongTensor).cuda())
-        # fixed label
-        zeros = Variable(torch.FloatTensor(opt.batch_size).fill_(0).cuda())
-        ones = Variable(torch.FloatTensor(opt.batch_size).fill_(1).cuda())
-
-
-
-def aug_payoff(gen, dis):
+def aug_payoff_method_gen_plus_class(gen, dis):
     global train_loader
     sum_loss = 0
     num_case = 0
@@ -260,7 +244,71 @@ def aug_payoff(gen, dis):
         # loss
         Ld, Lg = get_loss()
 
-        #calculating payoff
+        # calculating payoff
+        x_real, y_real = x_real.cuda(), y_real.cuda()
+        v_x_real, v_y_real = Variable(x_real), Variable(y_real)
+        # find adversarial example, this is changed for error
+        # ones.data.resize_(y_real.size())
+        with torch.no_grad():
+            ones.resize_(y_real.size())
+        v_x_real_adv = attack_Linf_PGD(v_x_real, ones, v_y_real, dis, Ld, opt.adv_steps, opt.epsilon)
+        d_real_bin, d_real_multi = dis(v_x_real_adv)
+        # accuracy for real images
+        positive = torch.sum(d_real_bin.data > 0).item()
+        _, idx = torch.max(d_real_multi.data, dim=1)
+        correct_real = torch.sum(idx.eq(y_real)).item()
+        total_real = y_real.numel()
+        # feed fake data
+        z.normal_(0, 1)
+        y_fake.random_(0, to=opt.nclass)
+        vz, v_y_fake = Variable(z), Variable(y_fake)
+        with torch.no_grad():
+            v_x_fake = gen(vz, y=v_y_fake)
+        d_fake_bin, d_fake_multi = dis(v_x_fake.detach())
+        # accuracy for fake images
+        negative = torch.sum(d_fake_bin.data > 0).item()
+        _, idx = torch.max(d_fake_multi.data, dim=1)
+        correct_fake = torch.sum(idx.eq(y_fake)).item()
+        total_fake = y_fake.numel()
+        # loss for fake images
+        if opt.our_loss:
+            loss_g_fake = Lg(d_fake_bin, ones, d_fake_multi, v_y_fake, lam=1)
+        else:
+            loss_g_fake = Lg(d_fake_bin, ones, d_fake_multi, v_y_fake, lam=0.5)
+        loss_g = loss_g_fake
+        sum_loss = sum_loss + loss_g
+        num_case = num_case + 1
+        if num_case == 3:
+            break
+    return sum_loss / num_case
+
+
+def aug_payoff_method_dis_plus_class(gen, dis):
+    global train_loader
+    sum_loss = 0
+    num_case = 0
+    for count, (x_real, y_real) in enumerate(train_loader):
+        # gaussian noise
+        z = torch.FloatTensor(opt.batch_size, opt.nz).cuda()
+        fixed_z = Variable(torch.FloatTensor(8 * 10, opt.nz).normal_(0, 1).cuda())
+        # random label
+        y_fake = torch.LongTensor(opt.batch_size).cuda()
+        np_y = np.arange(10)
+        np_y = np.repeat(np_y, 8)
+        fixed_y_fake = Variable(torch.from_numpy(np_y).type(torch.LongTensor).cuda())
+        # fixed label
+        zeros = Variable(torch.FloatTensor(opt.batch_size).fill_(0).cuda())
+        ones = Variable(torch.FloatTensor(opt.batch_size).fill_(1).cuda())
+        # update discriminator
+        dis.zero_grad()
+        # feed real data
+        x_real, y_real = x_real.cuda(), y_real.cuda()
+        v_x_real, v_y_real = Variable(x_real), Variable(y_real)
+
+        # loss
+        Ld, Lg = get_loss()
+
+        # calculating payoff
         x_real, y_real = x_real.cuda(), y_real.cuda()
         v_x_real, v_y_real = Variable(x_real), Variable(y_real)
         # find adversarial example, this is changed for error
@@ -293,6 +341,73 @@ def aug_payoff(gen, dis):
             loss_d_fake = Ld(d_fake_bin, zeros, d_fake_multi, v_y_fake, lam=1)
         else:
             loss_d_fake = Ld(d_fake_bin, zeros, d_fake_multi, v_y_fake, lam=0.5)
+        loss_d = loss_d_real + loss_d_fake
+        sum_loss = sum_loss + loss_d
+        num_case = num_case + 1
+        if num_case == 3:
+            break
+    return sum_loss / num_case
+
+
+def aug_payoff_method_dis_loss_only(gen, dis):
+    global train_loader
+    sum_loss = 0
+    num_case = 0
+    for count, (x_real, y_real) in enumerate(train_loader):
+        # gaussian noise
+        z = torch.FloatTensor(opt.batch_size, opt.nz).cuda()
+        fixed_z = Variable(torch.FloatTensor(8 * 10, opt.nz).normal_(0, 1).cuda())
+        # random label
+        y_fake = torch.LongTensor(opt.batch_size).cuda()
+        np_y = np.arange(10)
+        np_y = np.repeat(np_y, 8)
+        fixed_y_fake = Variable(torch.from_numpy(np_y).type(torch.LongTensor).cuda())
+        # fixed label
+        zeros = Variable(torch.FloatTensor(opt.batch_size).fill_(0).cuda())
+        ones = Variable(torch.FloatTensor(opt.batch_size).fill_(1).cuda())
+        # update discriminator
+        dis.zero_grad()
+        # feed real data
+        x_real, y_real = x_real.cuda(), y_real.cuda()
+        v_x_real, v_y_real = Variable(x_real), Variable(y_real)
+
+        # loss
+        Ld, Lg = get_loss()
+        Lb = get_bin_loss()
+
+        #calculating payoff
+        x_real, y_real = x_real.cuda(), y_real.cuda()
+        v_x_real, v_y_real = Variable(x_real), Variable(y_real)
+        # find adversarial example, this is changed for error
+        # ones.data.resize_(y_real.size())
+        with torch.no_grad():
+            ones.resize_(y_real.size())
+        v_x_real_adv = attack_Linf_PGD(v_x_real, ones, v_y_real, dis, Ld, opt.adv_steps, opt.epsilon)
+        d_real_bin, d_real_multi = dis(v_x_real_adv)
+        # accuracy for real images
+        positive = torch.sum(d_real_bin.data > 0).item()
+        _, idx = torch.max(d_real_multi.data, dim=1)
+        correct_real = torch.sum(idx.eq(y_real)).item()
+        total_real = y_real.numel()
+        # loss for real images
+        loss_d_real = Lb(d_real_bin, ones)
+        # feed fake data
+        z.normal_(0, 1)
+        y_fake.random_(0, to=opt.nclass)
+        vz, v_y_fake = Variable(z), Variable(y_fake)
+        with torch.no_grad():
+            v_x_fake = gen(vz, y=v_y_fake)
+        d_fake_bin, d_fake_multi = dis(v_x_fake.detach())
+        # accuracy for fake images
+        negative = torch.sum(d_fake_bin.data > 0).item()
+        _, idx = torch.max(d_fake_multi.data, dim=1)
+        correct_fake = torch.sum(idx.eq(y_fake)).item()
+        total_fake = y_fake.numel()
+        # loss for fake images
+        if opt.our_loss:
+            loss_d_fake = Lb(d_fake_bin, zeros)
+        else:
+            loss_d_fake = Lb(d_fake_bin, zeros)
         loss_d = loss_d_real + loss_d_fake
         sum_loss = sum_loss + loss_d
         num_case = num_case + 1
